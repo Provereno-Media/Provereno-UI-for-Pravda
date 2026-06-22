@@ -1,6 +1,5 @@
 <div align="center">
 
-<!-- Logo SVG inline — renders on GitHub -->
 <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
   <circle cx="31" cy="31" r="22" stroke="#01696f" stroke-width="4"/>
   <path d="M48 48L62 62" stroke="#01696f" stroke-width="4" stroke-linecap="round"/>
@@ -25,7 +24,7 @@
 
 ## Overview
 
-*provereno-ui-for-pravda* is an open-source, self-hostable web application that wraps [opensanctions/pravda](https://github.com/opensanctions/pravda) — a headless web archiving engine built on Playwright — with a team-facing UI and a public evidence viewer.
+`provereno-ui-for-pravda` is an open-source, self-hostable web application that wraps [opensanctions/pravda](https://github.com/opensanctions/pravda) — a headless web archiving engine built on Playwright — with a team-facing UI and a public evidence viewer.
 
 Built for investigative journalists and fact-checking teams who need to:
 
@@ -42,8 +41,8 @@ Deploys in a single `docker compose up` on any Linux VPS with 2 GB RAM. No Googl
 
 | Feature | Description |
 |---|---|
-| 🔐 **GitHub OAuth** | Sign in via GitHub App — no passwords, no email verification |
-| 👥 **Role-based access** | `admin` and `editor` roles; access list controlled via env variable |
+| 🔐 **GitHub OAuth** | Sign in via GitHub — restrict access by organisation and/or individual usernames |
+| 👥 **Role-based access** | `admin` and `editor` roles; controlled entirely via env variables |
 | 📸 **Async capture** | Job queue via PostgreSQL `LISTEN/NOTIFY`; real-time SSE progress |
 | 🗂 **Collections** | Group snapshots by investigation topic; add/remove with live filter |
 | 🏷 **Tagging** | Arbitrary tags on snapshots; filter and bulk-tag from the archive |
@@ -70,17 +69,27 @@ Deploys in a single `docker compose up` on any Linux VPS with 2 GB RAM. No Googl
 
 ```bash
 git clone https://github.com/Provereno-Media/Provereno-UI-for-Pravda.git
-cd Provereno-UI-for-Pravda
+cd Provereno-UI-for-Pravda/provereno-ui
 cp .env.example .env
 ```
 
-Edit `.env` — the four required fields:
+Open `.env` and fill in the required fields:
 
 ```dotenv
 GITHUB_CLIENT_ID=your_client_id
 GITHUB_CLIENT_SECRET=your_client_secret
-SECRET_KEY=change_me_to_a_random_64_char_string
-ALLOWED_GITHUB_LOGINS=alice,bob,carol   # comma-separated GitHub usernames
+SESSION_SECRET_KEY=change_me_to_a_random_32char_string
+
+# Grant access by GitHub organisation, individual logins, or both.
+# At least one of the two must be set.
+ALLOWED_GITHUB_ORGS=your-org
+ALLOWED_GITHUB_LOGINS=alice,bob
+```
+
+Generate a strong `SESSION_SECRET_KEY`:
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
 ### 2. Start
@@ -89,13 +98,13 @@ ALLOWED_GITHUB_LOGINS=alice,bob,carol   # comma-separated GitHub usernames
 docker compose up -d
 ```
 
-The app is available at `http://localhost` (or your configured domain). First user to log in with an allowed GitHub handle receives the `editor` role. Promote to `admin` via:
+The app is available at `http://localhost`. The first user to sign in with a permitted GitHub account receives the `editor` role. Promote to `admin`:
 
 ```bash
 docker compose exec app python -m provereno.cli promote-admin <github_login>
 ```
 
-### 3. Verify the backend is up
+### 3. Verify
 
 ```bash
 curl http://localhost/health
@@ -106,25 +115,43 @@ curl http://localhost/health
 
 ## Configuration
 
-All configuration is via environment variables. No code changes are needed for a new deployment.
+All configuration is via environment variables. No code changes are needed to deploy for a new organisation.
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `GITHUB_CLIENT_ID` | ✅ | — | GitHub OAuth App client ID |
-| `GITHUB_CLIENT_SECRET` | ✅ | — | GitHub OAuth App client secret |
-| `SECRET_KEY` | ✅ | — | 64-char random string for session signing |
-| `ALLOWED_GITHUB_LOGINS` | ✅ | — | Comma-separated GitHub usernames with access |
-| `DATABASE_URL` | — | `postgresql+asyncpg://...` | PostgreSQL connection string |
-| `PRAVDA_API_URL` | — | `http://pravda:8000` | URL of the Pravda engine |
-| `STORAGE_BACKEND` | — | `local` | `local`, `s3`, or `gcs` |
-| `STORAGE_PATH` | — | `/data/snapshots` | Root path for local storage |
-| `S3_BUCKET` | — | — | Bucket name for S3/GCS backend |
-| `S3_ENDPOINT_URL` | — | — | Custom endpoint (for MinIO, Cloudflare R2, etc.) |
-| `APP_TITLE` | — | `Provereno.Media` | Displayed name in UI and emails |
-| `BASE_URL` | — | `http://localhost` | Canonical base URL for public links |
-| `LOG_LEVEL` | — | `info` | `debug`, `info`, `warning`, `error` |
+### Required
 
-For S3-compatible storage (MinIO, Cloudflare R2, Backblaze B2), set `STORAGE_BACKEND=s3` and provide `S3_BUCKET`, `S3_ENDPOINT_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
+| Variable | Description |
+|---|---|
+| `GITHUB_CLIENT_ID` | GitHub OAuth App client ID |
+| `GITHUB_CLIENT_SECRET` | GitHub OAuth App client secret |
+| `SESSION_SECRET_KEY` | Random 32-char string for session signing |
+| `ALLOWED_GITHUB_ORGS` **or** `ALLOWED_GITHUB_LOGINS` | At least one must be set (see below) |
+
+### Access control
+
+Access is granted when a user satisfies **either** condition:
+
+```dotenv
+# Allow all members of a GitHub organisation
+ALLOWED_GITHUB_ORGS=my-newsroom
+
+# Allow specific individuals regardless of org membership
+ALLOWED_GITHUB_LOGINS=alice,bob,carol
+
+# Both can be set simultaneously
+```
+
+### Optional
+
+| Variable | Default | Description |
+|---|---|---|
+| `DATABASE_URL` | `postgresql+asyncpg://provereno:provereno@localhost:5434/provereno` | PostgreSQL connection string |
+| `PRAVDA_API_URL` | `http://pravda:8000` | URL of the Pravda engine |
+| `DATA_DIR` | `./data` | Root directory for captured snapshots |
+| `APP_TITLE` | `Provereno.Media` | Displayed name in the UI |
+| `BASE_URL` | `http://localhost` | Canonical base URL for public evidence links |
+| `LOG_LEVEL` | `info` | `debug` · `info` · `warning` · `error` |
+
+> **Note:** PostgreSQL is exposed on port **5434** by default (not the standard 5432) to avoid conflicts with existing local instances.
 
 ---
 
@@ -153,12 +180,13 @@ For S3-compatible storage (MinIO, Cloudflare R2, Backblaze B2), set `STORAGE_BAC
           │
 ┌─────────▼──────────┐     ┌──────────────────────────────┐
 │  PostgreSQL 15     │     │   opensanctions/pravda        │
-│                    │     │   (Playwright, headless)      │
-│  snapshots         │     │                               │
-│  jobs              │◄────┤  POST /snapshots              │
-│  collections       │     │  GET  /snapshots?url=...      │
-│  tags              │     │  GET  /health                 │
-│  audit_log         │     └──────────────────────────────┘
+│  (port 5434)       │     │   (Playwright, headless)      │
+│                    │     │                               │
+│  snapshots         │◄────┤  POST /snapshots              │
+│  jobs              │     │  GET  /snapshots?url=...      │
+│  collections       │     │  GET  /health                 │
+│  tags              │     └──────────────────────────────┘
+│  audit_log         │
 │  users             │
 └────────────────────┘
 ```
@@ -179,17 +207,21 @@ For S3-compatible storage (MinIO, Cloudflare R2, Backblaze B2), set `STORAGE_BAC
 
 ## API Reference
 
-The UI wraps the Pravda engine API. Core endpoints:
+The UI wraps the Pravda engine API. Core endpoints (base URL `http://localhost:8000`):
 
 ### `GET /health`
-Returns `{"status": "ok"}` when the service is running.
+
+```bash
+curl http://localhost:8000/health
+# {"status":"ok"}
+```
 
 ### `GET /snapshots`
 
 List snapshots for a URL.
 
-```
-GET /snapshots?url=https://example.com/article&page=1
+```bash
+curl "http://localhost:8000/snapshots?url=https://example.com/article&page=1"
 ```
 
 ```json
@@ -205,10 +237,12 @@ GET /snapshots?url=https://example.com/article&page=1
       "condition_met": true,
       "lifecycle_events": ["DOMContentLoaded", "load", "networkidle"],
       "contents": [
-        {"content_type": "screenshot", "path": "/data/snapshots/abc/screenshot.png"},
-        {"content_type": "mhtml",      "path": "/data/snapshots/abc/page.mhtml"}
+        {"content_type": "screenshot", "path": "./data/snapshots/abc/screenshot.png"},
+        {"content_type": "mhtml",      "path": "./data/snapshots/abc/page.mhtml"}
       ],
-      "headers": [{"name": "Content-Type", "value": "text/html; charset=utf-8"}]
+      "headers": [
+        {"name": "Content-Type", "value": "text/html; charset=utf-8"}
+      ]
     }
   ],
   "total": 1
@@ -219,32 +253,30 @@ GET /snapshots?url=https://example.com/article&page=1
 
 Trigger a new capture.
 
-```json
-{
-  "url": "https://example.com/article",
-  "condition_type": "lifecycle",
-  "condition": "networkidle"
-}
+```bash
+curl -X POST http://localhost:8000/snapshots \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/article", "condition_type": "lifecycle", "condition": "networkidle"}'
 ```
 
 **Condition values:** `DOMContentLoaded` · `load` · `networkidle`
 
-Full OpenAPI spec available at `/openapi.json` when the app is running.
+Full OpenAPI spec: `http://localhost:8000/openapi.json`
 
 ---
 
 ## Forensic Receipt
 
-Every snapshot can be exported as a verifiable ZIP package:
+Every snapshot can be exported as a verifiable ZIP package via the UI or `GET /export/{id}`:
 
 ```
 evidence-{id}.zip
-├── receipt.html          # Human-readable forensic report with QR code
-├── receipt.pdf           # Print-ready PDF version
-├── screenshot.png        # Full-page screenshot
-├── page.mhtml            # Complete page archive (download only, never served inline)
-├── metadata.json         # URL, timestamps, HTTP headers, capture conditions
-└── sha256sums.txt        # Checksums for all files above
+├── receipt.html       # Human-readable forensic report with QR code
+├── receipt.pdf        # Print-ready PDF version
+├── screenshot.png     # Full-page screenshot
+├── page.mhtml         # Complete page archive (download only, never served inline)
+├── metadata.json      # URL, timestamps, HTTP headers, capture conditions
+└── sha256sums.txt     # Checksums for all files above
 ```
 
 Verify integrity on any machine:
@@ -264,19 +296,19 @@ Archived pages can be published as public links — no login required:
 https://your-domain.org/evidence/{snapshot-id}
 ```
 
-Each public page displays the archived URL, capture timestamp, HTTP status, SHA-256 hash of the MHTML, and the availability status of the original URL. OpenGraph metadata enables rich previews when shared on social media.
+Each public page shows the archived URL, capture timestamp, HTTP status, SHA-256 hash of the MHTML, and the live availability status of the original URL. OpenGraph metadata enables rich previews when shared on social media.
 
-MHTML files are **never served inline** to prevent script execution. Only the screenshot and metadata are displayed in the browser.
+> MHTML files are **never served inline** to prevent script execution. Only the screenshot and metadata are rendered in the browser.
 
 ---
 
 ## Audit Log
 
-All significant actions are recorded in an append-only audit log accessible to `admin` users at `/audit`. The log captures:
+All significant actions are recorded in an append-only log, accessible to `admin` users at `/audit`. Logged event types:
 
 `snapshot.created` · `snapshot.deleted` · `snapshot.exported` · `snapshot.published` · `snapshot.unpublished` · `user.login` · `user.logout` · `bulk.started` · `tag.added` · `tag.removed` · `collection.created`
 
-Audit records are never deleted through the UI and can be exported as CSV.
+Records are never deleted through the UI and can be exported as CSV.
 
 ---
 
@@ -286,10 +318,11 @@ Audit records are never deleted through the UI and can be exported as CSV.
 # Install dependencies
 pip install -e ".[dev]"
 
-# Run PostgreSQL locally
+# Start PostgreSQL and Pravda (port 5434)
 docker compose up -d postgres pravda
 
 # Start the app with auto-reload
+cd provereno-ui
 uvicorn provereno.main:app --reload --port 8080
 
 # Run tests
@@ -299,28 +332,33 @@ pytest
 ### Project structure
 
 ```
-provereno/
-├── main.py               # App factory, router registration
-├── models.py             # SQLAlchemy ORM models
-├── config.py             # Pydantic settings
-├── capture.py            # Pravda integration
-├── jobs.py               # Async job queue
-├── forensic.py           # Forensic receipt generator
-├── url_monitor.py        # Background availability checker
-├── audit.py              # Audit log writer
-├── auth.py               # Session helpers
-├── routers/
-│   ├── auth.py           # GitHub OAuth flow
-│   ├── pages.py          # Server-rendered UI routes
-│   ├── snapshots.py      # Snapshot CRUD
-│   ├── collections.py    # Collections CRUD
-│   ├── bulk.py           # CSV bulk import
-│   ├── export.py         # Forensic receipt download
-│   ├── public.py         # Public evidence viewer
-│   └── job_routes.py     # SSE job progress
-├── templates/            # Jinja2 templates (12 files)
-└── static/
-    └── style.css         # Design system (CSS custom properties)
+provereno-ui/
+├── .env.example
+├── docker-compose.yml
+├── nginx.conf
+├── pyproject.toml
+└── provereno/
+    ├── main.py            # App factory, router registration
+    ├── models.py          # SQLAlchemy ORM models
+    ├── config.py          # Pydantic settings
+    ├── capture.py         # Pravda integration
+    ├── jobs.py            # Async job queue
+    ├── forensic.py        # Forensic receipt generator
+    ├── url_monitor.py     # Background availability checker
+    ├── audit.py           # Audit log writer
+    ├── auth.py            # Session helpers
+    ├── routers/
+    │   ├── auth.py        # GitHub OAuth flow
+    │   ├── pages.py       # Server-rendered UI routes
+    │   ├── snapshots.py   # Snapshot CRUD
+    │   ├── collections.py # Collections CRUD
+    │   ├── bulk.py        # CSV bulk import
+    │   ├── export.py      # Forensic receipt download
+    │   ├── public.py      # Public evidence viewer
+    │   └── job_routes.py  # SSE job progress
+    ├── templates/         # Jinja2 templates (12 files)
+    └── static/
+        └── style.css      # Design system (CSS custom properties)
 ```
 
 ---
@@ -338,6 +376,12 @@ Contributions are welcome. Please open an issue before starting significant work
 ### Code of Conduct
 
 This project is intended for journalists, researchers, and fact-checkers working in the public interest. Contributions that would facilitate surveillance, harassment, or censorship will not be accepted.
+
+---
+
+## Support the project
+
+The project is maintained by a small independent newsroom. If you find it useful, consider supporting us on [Patreon](https://patreon.com/provereno).
 
 ---
 
