@@ -23,7 +23,7 @@
 ---
 <img src="https://github.com/user-attachments/assets/6db1309b-53c4-4f6c-8a8f-3886bd838310" />
 
-[HTML-Mockup is here](https://provereno-media.github.io/Provereno-UI-for-Pravda/)
+[Clickable HTML-Mockup is here](https://provereno-media.github.io/Provereno-UI-for-Pravda/)
 
 ---
 
